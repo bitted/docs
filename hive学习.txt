@@ -1,0 +1,10 @@
+1、hive中创建tt表
+create table tt(id int,name string) row format delimited fields terminated by '\t';
+2、mysql>use hive;
+	mysql>show tables;
+	mysql>select * from TBLS;
+	
+
+3、通过set命令列出hive的相关属性值
+set fs.default.name
+	

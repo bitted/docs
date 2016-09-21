@@ -1,0 +1,113 @@
+										Springside4.0.1.GA-SNAPSHOT（showcase）学习笔记
+1、sitemesh：
+	web.xml(sitemeshFilter：过滤DefaultFactory加载【/WEB-INF/sitemesh.xml】,如果【sitemesh.xml】不存在，那么加载默认的
+	【com/opensymphony/module/sitemesh/factory/sitemesh-default.xml】，其中属性【decorators-file】默认加载【decorators.xml】，
+	-->decorators.xml，这样就可以使用sitemesh来布局页面了。
+
+2、	使用bin目录下面的jetty.bat启动showcase项目，其他的方法都报错，还不清楚什么情况。
+	解决：原来使用eclipse的jetty不能启动原因如下：
+		pom中spring.profiles.active使用的production的beans(在applicationContext-memcached.xml和applicationContext.xml
+	都有定义，现在都使用developtment)，现在可以使用eclipse安装的jetty启动了。
+
+3、Spring MVC：
+	1|、@RequestMapping：相当于ngnix中的rewrite重写，spring mvc的这种重写方式可以解决ngnix的重写，使用能灵活,目前发现可以标注在class和method上。
+	2|、
+
+4、登录：
+	1、没有看明白点击登录和记住我的时候后台什么处理。
+	解决：web.xml中shiroFilter过滤使用DelegatingFilterProxy（实现原理参阅：http://www.cnblogs.com/hzhuxin/archive/2011/12/19/2293730.html）中的doFilter(),方法中调用
+	invokeDelegate(delegateToUse, request, response, filterChain)，其中运行时获取的参数如下：
+	delegateToUse:org.apache.shiro.spring.web.ShiroFilterFactoryBean$SpringShiroFilter@1ca744
+	request：[POST /showcase/login]@2914662 org.eclipse.jetty.server.Request@2c7966
+	response：HTTP/1.1 302 Set-Cookie: rememberMe=deleteMe; Path=/showcase; Max-Age=0; Expires=Tue, 30-Oct-2012 07:27:18 GMT
+			  Set-Cookie: rememberMe=m9bTTYU1htb8WNQRcP2uf2uLvWwd48ckMLiv/O8gHdyGtS83fudQR1Ka7/W3+O/ikMgjCMktau81SNqT47vUyvLQn6AVNTlE2oSj4/nFGc3ge12/N7/tSUvAyyomdD1T/el3f4nGPlkWYTwpeAyvRJOWAl0K44lDq/05soCLF8WySOB9iFRwc8vwwMJgwKG60egfiQGleLSKiaPRBfBc2Ef7Mu7yCh52fC7kjAvZ61I7PrrHu/XUuEDitGyAyggj6jR/OUxzFZ+yOiZbmHmyotAcc+0C/uWKr1mmUpf9MhXz9zD6hsYRDeTf7B4N30xxo5DAACZdiSPTDo4zcW/Y2E84dMAsPickD+wcFsCNFuHmVqDFusJaQ8wZDs2RBZguppVsEbkxWBJc2wyfooYizlb3hCF7LLjaoJqvBfVyhRBL9HgxmFFs/jwEXTU5DjWRSw2vllLw1xnZCfuiF8imhf1dhyj6avmuiwKyiqdL/ESC+9UGT32HsIYKiJc+lYNho6reuz123vTz0SFth6U6aNU3GYN7u36nq5SpWjnJRRvxg8f1znRWQG6/ajco60W1aNTgEjmwx6Z2wFe8vnYmZNzJL+fX5eo6lqF9oH2u6LXvAc3ib0T5cRV8KkYWbVr/dKCRazr/bJEosMkoeIPj6mUrR2LNU0Uv31K5KZMUjwCf/rwVtuHl57mFzx/A28NIW7qnTxZBf3tFzdbp8qwTfSJUcvuPV7gwiuVKi8SohKg=; Path=/showcase; Max-Age=31536000; Expires=Thu, 31-Oct-2013 07:27:18 GMT; HttpOnly
+			  Location: http://localhost:8080/showcase/
+		：sitemeshFilter->springServlet
+	
+	使用代理模式，把servlet中的Filter与Spring中spring-web.jar中的bean关联起来。
+	2、shrio登录操作流程：web.xml(shiroFilter)->applicationContext-shiro.xml(shiroFilter-->securityManager-->shiroDbRealm(doGetAuthenticationInfo方法认证回调函数,登录时调用),授权成功后会返回用户的信息)
+	
+	
+
+5、账号管理：
+	1|、AtomicInteger：一个提供原子操作的Integer的类。在Java语言中，++i和i++操作并不是线程安全的，在使用的时候，不可避免的会用到synchronized关键字。而AtomicInteger则通过一种线程安全的加减操作接口。
+	2|、修改用户：修改完用户后需要给用户发送邮件，这里需要配置applicationContext-email.xml（mailSender）
+
+6、Web演示：
+	1|、图片下载，根据定义GZIP_MIME_TYPES数组和获取浏览器是否支持gzip压缩，判断该图片是否需要压缩下载。
+	2|、演示使用两种http client多线程高效获取远程网站内容, 见RemoteContentServlet.（内容、文件抓取）
+	3|、CacheControlHeaderFilter:为静态内容添加缓存控制 Header,这样就可以缓存header中的css，js等静态文件，提高网站的访问速度。
+	4|、YUI Compressor： 使用eclipse的YUI Compressor压缩js/css，减少客户端下载文件大小，提高网站访问速度。
+	5|、跨域名Mashup演示 ：使用jquery的 ajax jsonp方式跨域名访问内容，聚合多种网站的内容。
+
+7、WebService演示：
+	1|、web.xml中添加CXFServlet过滤器，过来/cxf/*的所有路径，转到applicationContext-soap-server.xml获取拦截到的切面地址如“/soap/accountservice”，
+	2|、这部分没有看明白。
+	
+8、日志控制演示：
+	1|、管理日志级别。
+9、JMX演示：
+	1|、演示spring annotation将POJO定义为MBean。
+	2|、MBEAN：介绍见/story/jmx
+10|、持久化高级演示：
+	1|、	MYBATIS演示：
+		a|、MyBatis + Spring的最佳实践：首先需要在【applicationContext.xml】中定义mybatis的sqlSessionFactory、entity扫描目录和Mapper文件的地址；
+		b|、	其次本项目中使用的自定义的注解，所以这里需要使用MapperScannerConfiguer扫描basePackage和自定义的annotationClass，到此mybatis的基本配置完成，
+			mybatis的语法及使用方法见【TeamMapper.xml】和【UserMapper.xml】。
+		c|、示例见AccountEffectiveService.java
+	2|、	JPA/Hibernate高级演示：
+		a|、基于Ehcache的二级缓存：在【applicationContext.xml】中配置entityManagerFactory，然后注入jpaProperties，见Jpa Entity Manager【applicationContext.xml】。
+		b|、其中缓存策略使用示例见【User.java】中getRoleList()和【ehcache-hibernate-local.xml】。
+		
+11|、JMS演示：情景：在修改用户的时候，发送邮件，使用示例见【AccountService.java->sendNotifyMessage()】,依赖的xml文件为:【applicationContext-jms-simple.xml】。
+	1|、	NotifyMessageProducer：JMS消息发送，使用两种方式发送《sendQueue》和《sendTopic》。
+	2|、NotifyMessageListener：异步接收消息处理类，其中包含topic和queue两种方式接受异步消息；在NotifyMessageProducer调用sendMessage方法（jmsTemplate.convertAndSend()）后，
+	因为在【applicationContext-jms-simple.xml】中已经注入了《notifyQueue》，《notifyQueue》和《jmsTemplate》实例，所以在《notifyMessageProducer》产生消息后就会调用异步消息处理机制sendNotificationMail()消息。
+	3|、邮件发送配置在【applicationContext-email.xml】中，这里定义了发送邮件的服务，邮件模板（模板可以是纯文本内容和html格式）。
+12|、Cache演示：技术说明见story/cache。
+	1|、 GuavaCacheDemo.java演示了Guava Cache的使用。这里使用@ActiveProfiles指定使用哪个开发环境。
+		CacheBuilder：用来构造cache的实例，maximumSize指定cache的大小，expireAfterAccess设置缓存失效的时间、使用TimeUnit来指定失效时间的单位，最后通过servie查询key对应的用户。
+    2|、EhcacheDemo.java演示了Ehcache与Spring的集成，主要是CacheManager和Cache的使用。
+    3|、AccountEffectiveService.java中演示了对Memcached的使用和Mybatis的使用。
+    	Mybatis使用：首先需要在【applicationContext.xml】中定义Mybatis配置来加载dataSource、【typeAliasesPackage】载入spring管理的bean和【mapperLocations】显式加载*Mapper.xml，
+    	然后扫描basePackage下所有以@MyBatisRepository标识的 接口，如TeamMybatisDao何UserMybatisDao,这里的dao中定义的方法名称必须与mapper.xml中定义的id相同。，
+    	a|、TeamMapper.xml:每个mapper都需要定义返回的对象，使用resultMap标签，type属性就是返回的对象，标签里面定义属性字段。
+    	b|、UserMapper.xml:定义对象，使用属性字段id,parameterType,resultType分别标识每个方法传入的参数和返回的对象类型。
+	4|、AccountService：主要学习Jpa的配置和使用。
+		这里获取数据的方式，使用spring-data-jpa.jar，这里需要配置annotation自动注册，Jpa Entity Manager,获取jpaVendorAdapter采用calvin写的公用方法Hibernates，
+		指定Sping data jpa扫描的目录，使用【<jpa:repositories base-package>】,主要扫描base-package下所有继承于Repository<T,ID>的接口 。
+		a|、UserDao.java：这里的userDao接口继承了PagingAndSortingRepository和JpaSpecificationExecutor，
+			PagingAndSortingRepository：主要提供排序、分页和CRUD操作。
+			JpaSpecificationExecutor：提供符合按照条件查询的结果，见searchUser（）方法。
+13|、定时任务演示：见/story/schedule。
+	1|、JDK5.0 ScheduledExecutorService的Timer式任务定义, 支持Graceful Shutdown演示。
+		【applicationContext-jdk-timer.xml】：ScheduledExecutorService
+		initialDelay：首次执行延期1秒,如系统启动时延时1秒。
+		period：每次执行间隔180秒。
+		shutdownTimeout：shutdown时等待任务完成, 最多等待20秒。
+		
+	2|、Spring的Cront式任务定义, 支持Graceful Shutdown演示。
+		【applicationContext-spring-scheduler.xml】：ThreadPoolTaskScheduler
+		
+	3|、Quartz的Timer式与Cron式任务定义。
+		【applicationContext-quartz-cron-local.xml】:QuartzClusterableJob
+		
+	4|、Quartz的任务在内存或数据库中存储, 单机或集群执行演示。
+		【applicationContext-quartz-timer-cluster.xml】
+14|、安全高级演示：
+	1|、Shiro高级演示：
+		基于角色与基于权限的授权:ShiroDbRealm中设置【认证回调函数】和【授权查询回调函数】，根据用户授权信息如name和loginname取出用户所有信息，
+		其中【applicationContext-shiro.xml】定义了Realm。
+	2|、安全高级演示：主要演示的是密码的加密与解密工具类。
+		1|、SHA-1与MD5消息摘要演示，支持Salt与迭代Hash(见Digests及其测试用例)。
+		2|、HMAC-SHA1共享密钥消息签名演示.(见Cryptos及其测试用例)。
+		3|、AES的共享密钥消息加密演示，支持IV(初始向量).(见Cryptos及其测试用例)。
+15|、工具类演示：	
+	1|、XML/JSON操作演示：JaxbDemo.java中演示了基于JAXB2.0的java对象-》XML转换和DOM4j校验。
+		a|、JaxbDemo中介绍了使用JaxbMapper工具类转化（xml->java和java->xml），包含xml的校验。
+		b|、
+			1|、JsonDemo中介绍了list，map，String，数组的tojson和json转为list，map，String，数组。
+			2|、测试三种不同的Inclusion风格,分别是全部输出，不输出null，不输出default值三种。
+			3|、测试类似Jaxb的常用annotaion，如properName，ignore，propertyOrder。
+			4|、测试直接使用Jaxb的annotaion。
+			5|、jsonp

@@ -1,0 +1,191 @@
+注意：在删除进程的时候不能使用kill -9 ，这样会造成mongodb的数据损坏，可以使用kill -2 和-15。
+
+1、首先搭建单个mongod
+	这里不能开auth和repilcaset配置，如下mongodb1.conf配置：
+dbpath=/Users/admin/soft/mongodb/data/r1
+logpath=/Users/admin/soft/mongodb/logs/r1.log
+#keyFile=/Users/admin/soft/mongodb/data/key/r1
+#replSet=chatserverrs3
+#auth=true
+port=10001
+logappend=true
+oplogSize=1024
+fork=true
+quiet=true
+maxConns=500
+nojournal=true
+nohttpinterface=true
+storageEngine=wiredTiger
+#directoryperdb=true
+
+
+
+/Users/admin/soft/mongodb/bin/mongod -f /Users/admin/soft/mongodb/conf/mongodb1.conf
+登录10001
+/Users/admin/soft/mongodb/bin/mongo 127.0.0.1:10001/chatserver
+
+/Users/admin/soft/mongodb/bin/mongod -f /Users/admin/soft/mongodb/conf/mongodb2.conf
+
+/Users/admin/soft/mongodb/bin/mongod -f /Users/admin/soft/mongodb/conf/mongodb3.conf
+
+/Users/admin/soft/mongodb/bin/mongod -f /Users/admin/soft/mongodb/conf/mongodb4.conf 
+
+/Users/admin/soft/mongodb/bin/mongod -f /Users/admin/soft/mongodb/conf/mongodb5.conf 
+
+2、在10001中执行下面的创建用户步骤：
+use admin
+db.createUser(
+    {
+      user: "root",
+      pwd: "root",
+      roles: [ "root","userAdminAnyDatabase","clusterAdmin"]
+    }
+)
+或则分两次分配权限
+db.grantRolesToUser(
+   "root",
+    [ "clusterAdmin" ]
+  );
+use chatserver
+db.createUser({user:"chatserver",pwd:"123456",roles:[{role:"dbOwner",db:"chatserver"},"readWrite"]}) 
+
+use apiserver
+db.createUser({user:"apiserver",pwd:"123456",roles:[{role:"dbOwner",db:"apiserver"},"readWrite"]}) 
+
+--下面这几个步骤是修改、删除权限和用户命令
+use chatserver
+db.grantRolesToUser(
+   "chatserver",
+   [ "readWrite" , { role: "userAdmin", db: "chatserver" } ,{ role: "dbAdmin", db: "chatserver" } ],
+   { w: "majority" , wtimeout: 4000 }
+)
+
+use apiserver
+db.grantRolesToUser(
+   "apiserver",
+   [ "readWrite" , { role: "userAdmin", db: “apiserver" } ,{ role: "dbAdmin", db: "apiserver" } ],
+   { w: "majority" , wtimeout: 4000 }
+)
+
+添加要删除的权限
+db.grantRolesToUser(
+   "chatserver",
+   [ "readWrite" , { role: "read", db: "chatserver" } ],
+   { w: "majority" , wtimeout: 4000 }
+)
+删除权限
+db.revokeRolesFromUser( "chatserver",
+                        [ { role: "read", db: "chatserver" }, "readWrite" ],
+                        { w: "majority" }
+                      )
+
+删除用户
+use chatserver;
+db.dropUser("chatserver", {w: "majority", wtimeout: 5000})
+use apiserver;
+db.dropUser("apiserver", {w: "majority", wtimeout: 5000}) 
+3、执行完成上面三个步骤后，需要打开Replica Set集群模式和auth
+如下mongodb1.conf配置：
+dbpath=/Users/admin/soft/mongodb/data/r1
+logpath=/Users/admin/soft/mongodb/logs/r1.log
+keyFile=/Users/admin/soft/mongodb/data/key/r1
+replSet=chatserverrs
+auth=true
+port=10001
+logappend=true
+oplogSize=1024
+fork=true
+quiet=true
+maxConns=500
+nojournal=true
+nohttpinterface=true
+#storageEngine=wiredTiger
+#directoryperdb=true
+
+如果上述完成后，在使用权限登录不上时，需要检查是否是在当前db下创建的用户，因为system.users中的name是按照db-user的复合索引创建。
+
+4、由于打开了auth权限，登录10001使用下面命令，创建副本集集群。
+/Users/admin/soft/mongodb/bin/mongo 192.168.100.6:10001/admin -u root -p root
+ 配置Replica Set集群
+config_chatserverrs = {
+				_id:'chatserverrs',
+				members:[ 
+						 {
+							 _id:0,
+							 host:"192.168.100.6:10001", 
+							 priority:1
+						 },  
+						 {
+							 _id:1,
+							 host:"192.168.100.6:10002"
+						 }, 
+						 {
+							 _id:2,
+							 host:"192.168.100.6:10003"
+						 }, 
+						 {
+							 _id:3,
+							 host:"192.168.100.6:10004"
+						 }
+						] 
+            }
+
+rs.initiate(config_chatserverrs);  
+
+向rs中添加一个节点：首先登录primary，然后配置节点4
+rs.add("192.168.100.6:10004")；
+查询rs.status();如果看不到10004节点，那么执行rs.reconfig(cfg);
+/Users/admin/soft/mongodb/bin/mongo 192.168.100.6:10001/chatserver -u chatserver -p chatserver
+
+5、 Priority 0 Replica Set Members.
+在primary上执行下面语句
+cfg = rs.conf()
+cfg.members[2].priority = 0
+cfg.members[3].priority = 1
+
+6、Hidden Replica Set Members
+设置10004为隐藏节点，10004必须priority=0、cfg.members[3].hidden = true，这时改节点不能给client提供服务，但是可以用来备份数据和
+	cfg = rs.conf()
+	cfg.members[3].priority = 0
+	cfg.members[3].hidden = true
+
+7、Delayed Replica Set Members
+
+	cfg = rs.conf()
+	cfg.members[3].priority = 0
+	cfg.members[3].hidden = true
+	cfg.members[3].slaveDelay = 3600
+
+8、Add an Arbiter to Replica Set
+rs.addArb("m1.example.net:30000")
+
+
+看到这个里了
+http://docs.mongodb.org/manual/core/replica-set-architectures/
+
+9、导入数据：
+/Users/admin/soft/mongodb/bin/mongoimport --host 192.168.100.6 --port 10001 --username chatserver --password 123456 --collection zipcodes --db chatserver --file /Users/admin/soft/mongodb/data/zips.json
+导出数据：
+/Users/admin/soft/mongodb/bin/mongoexport --host 192.168.100.6 --port 10001 --username chatserver --password 123456 --collection zipcodes --db chatserver --out zipcodesout.json
+
+导入导出db数据
+mongodump -h 192.168.100.6:27021 -d chatserver -u chatserver -p 123456   -o chatserver
+[root@localhost mongodb]# ./bin/mongorestore -d test --drop data/backup/test/ 
+10、恢复误删除数据
+1.首先我们往一个collection里插入数据。
+use test3
+for (var i=0;i<1000;i++){ db.a.save({"a":i})}
+2.让我们来检查下collection a中的数据
+db.a.find().count()
+3.这时候我们将a表dump出来做备份。
+/Users/admin/soft/mongodb/bin/mongodump --host 192.168.100.6 --port 10001 -d test3 --username test3 --password test3 -c a -o /Users/admin/soft/mongodb/data/test3/
+4.我们再往a中插入一条document
+db.a.save({a:19999})
+db.a.find().count()
+5.删除a表中，a为10的document
+db.a.remove({"a":10})
+6.再像a表中插入一条document
+db.a.save({a:9999})
+db.a.find().count()
+7.下面步骤：
+http://www.mongoing.com/eshu_point_in_time_recovery

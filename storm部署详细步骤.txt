@@ -1,0 +1,114 @@
+1.修改主机名：
+vim /etc/sysconfig/network
+NETWORKING=yes
+HOSTNAME=MASTER
+
+2.修改IP：
+vim /etc/sysconfig/network-scripts/ifcfg-eth0
+BOOTPROTO="static"
+HWADDR="00:0C:29:FC:62:B6"
+IPV6INIT="yes"
+NM_CONTROLLED="yes"
+ONBOOT="yes"
+TYPE="Ethernet"
+UUID="d0731a46-36df-4ab1-9bac-42bb151acc41"
+IPADDR="192.168.1.250"
+NETMASK="255.255.255.0"
+GATEWAY="192.168.1.1"
+DNS1="8.8.8.8"
+DNS2="8.8.4.4"
+
+3.修改主机和IP的映射关系
+vim /etc/hosts
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+192.168.1.250   MASTER
+192.168.1.251   SLAVE-1
+192.168.1.252   SLAVE-2
+
+4.关闭防火墙
+vim /etc/sysconfig/selinux
+# This file controls the state of SELinux on the system.
+# SELINUX= can take one of these three values:
+#     enforcing - SELinux security policy is enforced.
+#     permissive - SELinux prints warnings instead of enforcing.
+#     disabled - No SELinux policy is loaded.
+SELINUX=disabled
+# SELINUXTYPE= can take one of these two values:
+#     targeted - Targeted processes are protected,
+#     mls - Multi Level Security protection.
+SELINUXTYPE=targeted
+继续执行命令：
+service iptables stop
+chkconfig iptables off
+reboot
+
+
+5.上传jdk安装包
+
+6.解压安装
+chmod +x jdk-6u45-linux-x64.bin
+./jdk-6u45-linux-x64.bin
+
+mkdir /usr/java
+mv jdk1.6.0_45/ /usr/java/
+
+7.配置环境变量
+vim /etc/profile
+在文件最后面添加：
+export JAVA_HOME=/usr/java/jdk1.6.0_45
+export CLASSPATH=$JAVA_HOME/lib
+export PATH=$PATH:$JAVA_HOME/bin
+更新配置：
+source /etc/profile
+
+
+上传zeromq-2.1.7.tar.gz、jzmq-master.zip、storm-0.8.2.zip、zookeeper-3.4.5.tar.gz等文件
+1.编译安装ZMQ：
+tar -xzf zeromq-2.1.7.tar.gz
+cd zeromq-2.1.7
+./configure
+#编译可能会出错：configure: error: Unable to find a working C++ compiler
+#安装一下依赖的rpm包：libstdc++-devel gcc-c++ 
+可以上网的情况下： 
+yum install gcc-c++
+虚拟机不能上网情况：首先到http://mirrors.163.com/centos/6.4/os/x86_64/Packages/ 下载rpm
+rpm -i libstdc++-devel-4.4.7-3.el6.x86_64.rpm
+rpm -i gcc-c++-4.4.7-3.el6.x86_64.rpm
+rpm -i libuuid-devel-2.17.2-12.9.el6.x86_64.rpm
+
+./configure
+make
+make install
+
+2.编译安装JZMQ：
+cd jzmq
+./autogen.sh
+#报错:autogen.sh: error: could not find libtool. libtool is required to run autogen.sh. 缺少libtool
+yum install libtool
+或者手动安装
+rpm -i autoconf-2.63-5.1.el6.noarch.rpm 
+rpm -i automake-1.11.1-4.el6.noarch.rpm 
+rpm -i libtool-2.2.6-15.5.el6.x86_64.rpm
+
+./configure
+make
+make install
+
+
+storm启动
+
+1、把storm的启动信息输出到指定文件
+storm nimbus >/dev/null 2>&1 &
+storm ui >/dev/null 2>&1 &
+storm supervisor >/dev/null 2>&1 &
+
+storm jar lify-cycle cn.*.TopoMain
+
+storm jar storm-starter-0.0.1-SNAPSHOT-jar-with-dependencies.jar storm.starter.ExclamationTopology ExclamationTopology
+storm jar storm-starter-0.0.1-SNAPSHOT-jar-with-dependencies.jar storm.starter.WordCountTopology WordCountTopology
+storm jar storm-starter-0.0.1-SNAPSHOT-jar-with-dependencies.jar storm.starter.ReachTopology ReachTopology
+storm jar WordCount.jar cn.itcast.storm.topology.WordCountTopo  /home/mobileweb/hadoop/storm-starter-master/data 2
+storm jar WordCount.jar cn.itcast.storm.topology.WordCountTopo  /home/mobileweb/hadoop/storm-starter-master/data 2
+
+java -jar  WordCount.jar /home/mobileweb/hadoop/storm-starter-master/data 2
