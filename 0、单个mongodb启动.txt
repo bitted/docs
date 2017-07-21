@@ -1,0 +1,9 @@
+1、单个mongodb启动
+/app/mongo/bin/mongod --dbpath=/app/mongo/data/db/ --logpath=/app/mongo/logs/mongodb.log --fork --port 27000
+2、在启动过程中遇到问题：
+	1）、当mongodb启动不起来时，需要检查data/db/下面的文件是否属于当前用户，不属于的话需要改成当前用户，如lakala
+	chown -R lakala test.*
+	chgrp -R lakala test.*
+	
+	2）、检查data/db/下面是否存在了mongod.lock，需要删除。
+	

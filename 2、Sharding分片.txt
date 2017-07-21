@@ -1,0 +1,30 @@
+1、配置Sharding
+
+mkdir -p /app/mongo/data/shard/s0
+mkdir -p /app/mongo/data/shard/s1
+mkdir -p /app/mongo/data/shard/log
+
+/app/mongo/bin/mongod --shardsvr --port 20000 --dbpath /app/mongo/data/shard/s0 --fork --logpath /app/mongo/data/shard/log/s0.log --directoryperdb
+
+/app/mongo/bin/mongod --shardsvr --port 20001 --dbpath /app/mongo/data/shard/s1 --fork --logpath /app/mongo/data/shard/log/s1.log --directoryperdb
+
+
+mkdir -p /app/mongo/data/shard/config
+
+/app/mongo/bin/mongod --configsvr --port 30000 --dbpath /app/mongo/data/shard/config --fork --logpath /app/mongo/data/shard/log/config.log --directoryperdb
+
+
+/app/mongo/bin/mongos --port 40000 --configdb localhost:30000 --fork --logpath /app/mongo/data/shard/log/route.log --chunkSize 1
+
+/app/mongo/bin/mongo admin --port 40000
+db.runCommand({addshard:"localhost:20000"});
+db.runCommand({addshard:"localhost:20001"});
+
+db.runCommand({enablesharding:"test"}); db.runCommand({shardcollection:"test.user",key:{_id:1}}); 
+
+测试；
+use test
+for (var i=1;i<=500000;i++) db.user.insert({age:i,name:"litj",addr:"beijing",country:"China"});
+
+db.user.stats();
+

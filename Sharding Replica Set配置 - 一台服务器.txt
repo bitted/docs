@@ -1,0 +1,82 @@
+﻿mkdir -p /data/A/shard1_1 
+mkdir -p /data/A/shard2_1 
+mkdir -p /data/A/config 
+
+mkdir -p /data/B/shard1_2 
+mkdir -p /data/B/shard2_2 
+mkdir -p /data/B/config 
+
+mkdir -p /data/C/shard1_3
+mkdir -p /data/C/shard2_3 
+mkdir -p /data/C/config 
+
+配置 shard1 所用到的 Replica Sets 
+/app/mongo/bin/mongod --shardsvr --replSet shard1 --port 27017 --dbpath /data/A/shard1_1 --logpath /data/A/shard1_1/shard1_1.log --logappend --fork
+
+/app/mongo/bin/mongod --shardsvr --replSet shard1 --port 27027 --dbpath /data/B/shard1_2 --logpath /data/B/shard1_2/shard1_2.log --logappend --fork
+
+/app/mongo/bin/mongod --shardsvr --replSet shard1 --port 27037 --dbpath /data/C/shard1_3 --logpath /data/C/shard1_3/shard1_3.log --logappend --fork
+
+/app/mongo/bin/mongo --port 27017
+
+config={_id:'shard1',members:[{_id:0,host:"localhost:27017"},{_id:1,host:"localhost:27027"},{_id:2,host:"localhost:27037"}]};
+
+rs.initiate(config);
+rs.status();
+ 
+shard1:SECONDARY> db.a.insert({"name":111});
+shard1:PRIMARY> db.a.find();
+{ "_id" : ObjectId("51e62cc4c481354b839d5ae0"), "name" : 111 }
+shard1:PRIMARY> rs.status();
+
+配置 shard2 所用到的 Replica Sets
+
+/app/mongo/bin/mongod --shardsvr --replSet shard2 --port 27018 --dbpath /data/A/shard2_1 --logpath /data/A/shard2_1/shard2_1.log --logappend --fork 
+/app/mongo/bin/mongod --shardsvr --replSet shard2 --port 27028 --dbpath /data/B/shard2_2 --logpath /data/B/shard2_2/shard2_2.log --logappend --fork 
+/app/mongo/bin/mongod --shardsvr --replSet shard2 --port 27038 --dbpath /data/C/shard2_3 --logpath /data/C/shard2_3/shard2_3.log --logappend --fork 
+
+/app/mongo/bin/mongo --port 27018
+
+config2 ={_id:'shard2',members:[{_id:3,host:'localhost:27018'},{_id:4,host:'localhost:27028'},{_id:5,host:'localhost:27038'}]}
+rs.initiate(config2);
+>rs.status();
+ 
+shard1:SECONDARY> db.b.insert({"name":111});
+shard1:PRIMARY> db.b.find();
+{ "_id" : ObjectId("51e62cc4c481354b839d5ae0"), "name" : 111 }
+shard1:PRIMARY> rs.status();
+配置 3 台 Config Server
+
+/app/mongo/bin/mongod --configsvr --dbpath /data/A/config --port 20000 --logpath /data/A/config/config.log --logappend --fork
+/app/mongo/bin/mongod --configsvr --dbpath /data/B/config --port 20001 --logpath /data/B/config/config.log --logappend --fork
+/app/mongo/bin/mongod --configsvr --dbpath /data/C/config --port 20002 --logpath /data/C/config/config.log --logappend --fork
+
+配置 3 台 Route Process
+/app/mongo/bin/mongos --configdb localhost:20000,localhost:20001,localhost:20002 --port 30000 --chunkSize 1 --logpath /data/A/mongos.log --logappend --fork
+/app/mongo/bin/mongos --configdb localhost:20000,localhost:20001,localhost:20002 --port 30001 --chunkSize 1 --logpath /data/B/mongos.log --logappend --fork
+/app/mongo/bin/mongos --configdb localhost:20000,localhost:20001,localhost:20002 --port 30002 --chunkSize 1 --logpath /data/C/mongos.log --logappend --fork
+
+配置 Shard Cluster （shard集群）
+/app/mongo/bin/mongo --port 30000
+use admin
+db.runCommand({addshard:"shard1/localhost:27017,localhost:27027,localhost:27037"}); 
+db.runCommand({addshard:"shard2/localhost:27018,localhost:27028,localhost:27038"}); 
+
+db.runCommand({listshards:1});
+
+激活数据库及集合的分片
+db.runCommand({ enablesharding:"test" }) 
+db.runCommand({ shardcollection: "test.users", key: { _id:1 }}) 
+
+
+db.runCommand({ enablesharding:"lakala" }) 
+db.runCommand({ shardcollection: "lakala.users", key: { _id:1 }}) 
+
+use test
+for(var i=1;i<=200000;i++) db.users.insert({id:i,addr_1:"Beijing",addr_2:"Shanghai"}); 
+db.users.stats() 
+
+db.runCommand({"shard2/localhost:27018,localhost:27028,localhost:27038"});
+
+
+db.runCommand({"removeshard":"shard2/localhost:27018,localhost:27028,localhost:27038"});

@@ -1,0 +1,105 @@
+﻿10.5.12.61
+
+mkdir -p /data/A/shard1_1 
+mkdir -p /data/A/shard2_1   
+mkdir -p /data/A/config 
+
+10.5.12.54
+
+mkdir -p /data/B/shard1_2
+mkdir -p /data/B/shard2_2 
+mkdir -p /data/B/config 
+
+
+10.5.11.57
+
+mkdir -p /data/D/shard1_3 
+mkdir -p /data/D/shard2_3 
+mkdir -p /data/D/config 
+
+配置 shard1 所用到的 Replica Sets 
+/app/mongo/bin/mongod --shardsvr --replSet shard1 --port 27007 --dbpath /data/A/shard1_1 --logpath /data/A/shard1_1/shard1_1.log --logappend --fork
+
+/app/mongo/bin/mongod --shardsvr --replSet shard1 --port 27027 --dbpath /data/B/shard1_2 --logpath /data/B/shard1_2/shard1_2.log --logappend --fork
+
+/app/mongo/bin/mongod --shardsvr --replSet shard1 --port 27037 --dbpath /data/D/shard1_3 --logpath /data/D/shard1_3/shard1_3.log --logappend --fork
+
+/app/mongo/bin/mongo --port 27007
+
+config={_id:'shard1',members:[{_id:0,host:"10.5.12.61:27007"},{_id:1,host:"10.5.12.54:27027"},{_id:2,host:"10.5.11.57:27037"}]};
+
+rs.initiate(config);
+rs.status();
+ 
+shard1:SECONDARY> db.a.insert({"name":111});
+shard1:PRIMARY> db.a.find();
+{ "_id" : ObjectId("51e62cc4c481354b839d5ae0"), "name" : 111 }
+shard1:PRIMARY> rs.status();
+
+配置 shard2 所用到的 Replica Sets
+
+/app/mongo/bin/mongod --shardsvr --replSet shard2 --port 27008 --dbpath /data/A/shard2_1 --logpath /data/A/shard2_1/shard2_1.log --logappend --fork 
+/app/mongo/bin/mongod --shardsvr --replSet shard2 --port 27028 --dbpath /data/B/shard2_2 --logpath /data/B/shard2_2/shard2_2.log --logappend --fork 
+/app/mongo/bin/mongod --shardsvr --replSet shard2 --port 27038 --dbpath /data/D/shard2_3 --logpath /data/D/shard2_3/shard2_3.log --logappend --fork 
+
+/app/mongo/bin/mongo --port 27008
+
+config2 ={_id:'shard2',members:[{_id:3,host:'10.5.12.61:27008'},{_id:4,host:'10.5.12.54:27028'},{_id:5,host:'10.5.11.57:27038'}]}
+rs.initiate(config2);
+>rs.status();
+ 
+shard2:SECONDARY> db.b.insert({"name":222});
+shard2:PRIMARY> db.b.find();
+{ "_id" : ObjectId("51e62cc4c481354b839d5ae0"), "name" : 222 }
+shard2:PRIMARY> rs.status();
+
+
+配置 3 台 Config Server
+
+/app/mongo/bin/mongod --configsvr --dbpath /data/A/config --port 20003 --logpath /data/A/config/config.log --logappend --fork
+/app/mongo/bin/mongod --configsvr --dbpath /data/B/config --port 20001 --logpath /data/B/config/config.log --logappend --fork
+/app/mongo/bin/mongod --configsvr --dbpath /data/D/config --port 20002 --logpath /data/D/config/config.log --logappend --fork
+
+
+配置 3 台 Route Process
+
+/app/mongo/bin/mongos --configdb 10.5.12.61:20003,10.5.12.54:20001,10.5.11.57:20002 --port 30003 --chunkSize 1 --logpath /data/A/mongos.log --logappend --fork
+/app/mongo/bin/mongos --configdb 10.5.12.61:20003,10.5.12.54:20001,10.5.11.57:20002 --port 30001 --chunkSize 1 --logpath /data/B/mongos.log --logappend --fork
+/app/mongo/bin/mongos --configdb 10.5.12.61:20003,10.5.12.54:20001,10.5.11.57:20002 --port 30002 --chunkSize 1 --logpath /data/D/mongos.log --logappend --fork
+注意：在配置mongos时，可能由于config中的某个config配置不正确而失败，所以查看mongos的log输出，检查是哪个config连接出错。
+错误样式（ERROR: config servers not in sync）。
+
+配置 Shard Cluster （shard集群）
+
+/app/mongo/bin/mongo --port 30003
+use admin
+db.runCommand({addshard:"shard1/10.5.12.61:27007,10.5.12.54:27027,10.5.11.57:27037"}); 
+db.runCommand({addshard:"shard2/10.5.12.61:27008,10.5.12.54:27028,10.5.11.57:27038"}); 
+注意：如果在添加第二个shard时报错，可以在mongovue中在config->shards->insert document,插入下面值即可：
+{
+  "_id" : "shard2",
+  "host" : "shard2/10.5.11.57:27038,10.5.12.54:27028,10.5.12.61:27008"
+}
+错误样式：
+{
+	"ok" : 0,
+	"errmsg" : "can't add shard shard2/10.5.12.61:27008,10.5.12.54:27028,10.5.11.57:27038 because a local database 'test' exists in another shard1:shard1/10.5.11.57:27037,10.5.12.54:27027,10.5.12.61:27007"
+}
+
+
+db.runCommand({listshards:1});
+
+激活数据库及集合的分片
+db.runCommand({ enablesharding:"test" }) 
+db.runCommand({ shardcollection: "test.users", key: { _id:1 }}) 
+
+
+db.runCommand({ enablesharding:"lakala" }) 
+db.runCommand({ shardcollection: "lakala.TabMobileActiveInfo", key: { _id:1 }}) 
+
+
+use test
+for(var i=1;i<=200000;i++) db.users.insert({id:i,addr_1:"Beijing",addr_2:"Shanghai"}); 
+db.users.stats() 
+
+db.runCommand({"removeshard":"shard2/localhost:27018,localhost:27028,localhost:27038"});

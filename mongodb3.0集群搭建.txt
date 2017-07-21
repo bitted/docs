@@ -1,0 +1,177 @@
+注意：在删除进程的时候不能使用kill -9 ，这样会造成mongodb的数据损坏，可以使用kill -2 和-15。
+
+1、首先搭建单个mongod
+	这里不能开auth和repilcaset配置，如下mongodb1.conf配置：
+dbpath=/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/data/r1
+logpath=/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/logs/r1.log
+#keyFile=/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/data/key/r1
+#replSet=mobors3
+#auth=true
+port=10001
+logappend=true
+oplogSize=1024
+fork=true
+quiet=true
+maxConns=500
+nojournal=true
+nohttpinterface=true
+#storageEngine=wiredTiger
+#directoryperdb=true
+
+
+
+/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/bin/mongod -f /home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/conf/mongodb1.conf
+登录10001
+/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/bin/mongo 10.127.3.250:10001/mobo
+
+/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/bin/mongod -f /home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/conf/mongodb2.conf
+
+/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/bin/mongod -f /home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/conf/mongodb3.conf
+
+/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/bin/mongod -f /home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/conf/mongodb4.conf 
+
+/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/bin/mongod -f /home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/conf/mongodb5.conf 
+
+2、在10001中执行下面的创建用户步骤：
+use admin
+db.createUser(
+    {
+      user: "root",
+      pwd: "root",
+      roles: [ "root","userAdminAnyDatabase","clusterAdmin"]
+    }
+)
+或则分两次分配权限
+db.grantRolesToUser(
+   "root",
+    [ "clusterAdmin" ]
+  );
+use mobo
+db.createUser({user:"mobo", pwd:"mobo",roles : [
+	            { role: "dbOwner", db: "mobo" },"readWrite"
+	            ]
+	         })
+--下面这几个步骤是修改、删除权限和用户命令
+use mobo
+db.grantRolesToUser(
+   "mobo",
+   [ "readWrite" , { role: "userAdmin", db: "mobo" } ,{ role: "dbAdmin", db: "mobo" } ],
+   { w: "majority" , wtimeout: 4000 }
+)
+添加要删除的权限
+db.grantRolesToUser(
+   "mobo",
+   [ "readWrite" , { role: "read", db: "mobo" } ],
+   { w: "majority" , wtimeout: 4000 }
+)
+删除权限
+db.revokeRolesFromUser( "mobo",
+                        [ { role: "read", db: "mobo" }, "readWrite" ],
+                        { w: "majority" }
+                      )
+
+删除用户
+db.dropUser("mobo", {w: "majority", wtimeout: 5000})
+
+3、执行完成上面三个步骤后，需要打开Replica Set集群模式和auth
+如下mongodb1.conf配置：
+dbpath=/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/data/r1
+logpath=/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/logs/r1.log
+keyFile=/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/data/key/r1
+replSet=mobors
+auth=true
+port=10001
+logappend=true
+oplogSize=1024
+fork=true
+quiet=true
+maxConns=500
+nojournal=true
+nohttpinterface=true
+#storageEngine=wiredTiger
+#directoryperdb=true
+
+如果上述完成后，在使用权限登录不上时，需要检查是否是在当前db下创建的用户，因为system.users中的name是按照db-user的复合索引创建。
+
+4、由于打开了auth权限，登录10001使用下面命令，创建副本集集群。
+/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/bin/mongo 10.127.3.250:10001/admin -u root -p root
+ 配置Replica Set集群
+config_mobors = {
+				_id:'mobors',
+				members:[ 
+						 {
+							 _id:0,
+							 host:"10.127.3.250:10001", 
+							 priority:1
+						 },  
+						 {
+							 _id:1,
+							 host:"10.127.3.250:10002"
+						 }, 
+						 {
+							 _id:2,
+							 host:"10.127.3.250:10003"
+						 }, 
+						 {
+							 _id:3,
+							 host:"10.127.3.250:10004"
+						 }
+						] 
+            }
+
+rs.initiate(config_mobors);  
+
+向rs中添加一个节点：首先登录primary，然后配置节点4
+rs.add("10.127.3.250:10004")；
+查询rs.status();如果看不到10004节点，那么执行rs.reconfig(cfg);
+/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/bin/mongo 10.127.3.250:10001/mobo -u mobo -p mobo
+
+5、 Priority 0 Replica Set Members.
+在primary上执行下面语句
+cfg = rs.conf()
+cfg.members[2].priority = 0
+cfg.members[3].priority = 1
+
+6、Hidden Replica Set Members
+设置10004为隐藏节点，10004必须priority=0、cfg.members[3].hidden = true，这时改节点不能给client提供服务，但是可以用来备份数据和
+	cfg = rs.conf()
+	cfg.members[3].priority = 0
+	cfg.members[3].hidden = true
+
+7、Delayed Replica Set Members
+
+	cfg = rs.conf()
+	cfg.members[3].priority = 0
+	cfg.members[3].hidden = true
+	cfg.members[3].slaveDelay = 3600
+
+8、Add an Arbiter to Replica Set
+rs.addArb("m1.example.net:30000")
+
+
+看到这个里了
+http://docs.mongodb.org/manual/core/replica-set-architectures/
+
+9、导入数据：
+/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/bin/mongoimport --host 10.127.3.250 --port 10001 --username mobo --password mobo --collection zipcodes --db mobo --file /home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/data/zips.json
+导出数据：
+/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/bin/mongoexport --host 10.127.3.250 --port 10001 --username mobo --password mobo --collection zipcodes --db mobo --out zipcodesout.json
+
+10、恢复误删除数据
+1.首先我们往一个collection里插入数据。
+use test3
+for (var i=0;i<1000;i++){ db.a.save({"a":i})}
+2.让我们来检查下collection a中的数据
+db.a.find().count()
+3.这时候我们将a表dump出来做备份。
+/home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/bin/mongodump --host 10.127.3.250 --port 10001 -d test3 --username test3 --password test3 -c a -o /home/mobileweb/mongodb/mongodb-linux-x86_64-3.0.1/data/test3/
+4.我们再往a中插入一条document
+db.a.save({a:19999})
+db.a.find().count()
+5.删除a表中，a为10的document
+db.a.remove({"a":10})
+6.再像a表中插入一条document
+db.a.save({a:9999})
+db.a.find().count()
+7.下面步骤：
+http://www.mongoing.com/eshu_point_in_time_recovery
